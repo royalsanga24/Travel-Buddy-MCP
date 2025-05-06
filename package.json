@@ -14,7 +14,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
     "amadeus": "^11.0.0",
-    "amadeus-ts": "^5.1.1",
     "dotenv": "^16.5.0",
     "zod": "^3.24.4"
   },
