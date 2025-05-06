@@ -53,27 +53,41 @@ server.tool(
 server.tool(
   "search_hotels",
   {
-    location: z.string().describe("City code (e.g., LAX, NYC, DEL)"), 
+    location: z.string().describe("City code (e.g., NYC, PAR, LON)"), 
     checkIn: z.string(),
     checkOut: z.string(),
     adults: z.number().default(1)
   },
   async ({ location, checkIn, checkOut, adults }) => {
     try {
-      // Use the correct endpoint for city-based searches
-      const response = await amadeus.shopping.hotelOffers.get({
-        cityCode: location.substring(0, 3).toUpperCase(),
+      // First find hotels in the city
+      const cityCode = location.substring(0, 3).toUpperCase();
+      const hotelsResponse = await amadeus.referenceData.locations.hotels.byCity.get({
+        cityCode: cityCode
+      });
+      
+      // If no hotels found, return early
+      if (!hotelsResponse.data || hotelsResponse.data.length === 0) {
+        return {
+          content: [{ type: "text", text: `No hotels found in ${cityCode}.` }]
+        };
+      }
+      
+      // Take first 3 hotels and get offers
+      const hotelIds = hotelsResponse.data.slice(0, 3).map((h: any) => h.hotelId).join(",");
+      
+      // Now get offers for these hotels
+      const offersResponse = await amadeus.shopping.hotelOffersSearch.get({
+        hotelIds: hotelIds,
         checkInDate: checkIn,
         checkOutDate: checkOut,
         adults: String(adults),
-        roomQuantity: "1",
-        bestRateOnly: true
+        roomQuantity: "1"
       });
       
-      let hotelText = "No hotels found";
-      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
-        const hotels = response.data
-          .slice(0, 3)
+      let hotelText = "No offers available";
+      if (offersResponse.data && Array.isArray(offersResponse.data) && offersResponse.data.length > 0) {
+        const hotels = offersResponse.data
           .map((h: any) => {
             const hotelName = h.hotel?.name || 'Unknown Hotel';
             const currency = h.offers?.[0]?.price?.currency || '';
@@ -81,27 +95,16 @@ server.tool(
             return `• ${hotelName}: ${currency} ${price}`;
           })
           .join("\n");
-        hotelText = `Found ${response.data.length} hotel(s) in ${location}. Top offers:\n${hotels}`;
+        hotelText = `Found hotel offers in ${cityCode}:\n${hotels}`;
       }
       
       return {
         content: [{ type: "text", text: hotelText }]
       };
     } catch (error) {
-      console.error('Hotel search error details:', error); // For debugging
+      console.error('Hotel search error:', error);
       
       let errorMessage = "Error searching for hotels";
-      // @ts-ignore
-      if (error.response && error.response.result && error.response.result.errors) {
-        // @ts-ignore
-        const apiError = error.response.result.errors[0];
-        errorMessage = `API Error (${apiError.code}): ${apiError.title} - ${apiError.detail}`;
-        // @ts-ignore
-      } else if (error.message) {
-        // @ts-ignore
-        errorMessage = error.message;
-      }
-      
       return {
         content: [{ type: "text", text: errorMessage }]
       };
